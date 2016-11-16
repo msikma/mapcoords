@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<title>Google Maps - Get Coordinates</title>
+<meta name="viewport" content="initial-scale=1.0" />
+<meta charset="utf-8" />
+<style>
+#map {
+  height: 100%;
+}
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+.infowindow {
+}
+.infowindow h1 {
+  font-size: 18px;
+  line-height: 24px;
+}
+.infowindow label {
+  width: 70px;
+  display: inline-block;
+}
+.infowindow input {
+  width: 195px;
+}
+.infowindow button {
+  margin-left: 8px;
+}
+.infowindow .success {
+  color: green;
+}
+.controls {
+  margin-top: 10px;
+  border: 1px solid transparent;
+  border-radius: 2px 0 0 2px;
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  height: 32px;
+  outline: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+#pac-input {
+  background-color: #fff;
+  font-family: Roboto;
+  font-size: 15px;
+  font-weight: 300;
+  margin-left: 12px;
+  padding: 0 11px 0 13px;
+  text-overflow: ellipsis;
+  width: 300px;
+}
+
+#pac-input:focus {
+  border-color: #4d90fe;
+}
+
+.pac-container {
+  font-family: Roboto;
+}
+
+#type-selector {
+  color: #fff;
+  background-color: #4d90fe;
+  padding: 5px 11px 0px 11px;
+}
+
+#type-selector label {
+  font-family: Roboto;
+  font-size: 13px;
+  font-weight: 300;
+}
+</style>
+</head>
+<body>
+<input id="pac-input" class="controls" type="text" placeholder="Search Box" />
+<div id="map"></div>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+<script>
+var startLatLng = {lat: -34.397, lng: 150.644};
+var currLatLng = {lat: 0, lng: 0};
+var currLoc = '...';
+var currZoom = 8;
+var lsPrefix = 'gmaps-currcoords-';
+var delayTimer;
+
+function getInfoContent() {
+  return '<div class="infowindow">' +
+    '<h1>Current coordinates:</h1>' +
+    '<p><label for="lat_input">Latitude: </label><input id="lat_input" value="' + currLatLng.lat + '" type="text" /><button>Copy</button></p>' +
+    '<p><label for="lng_input">Longitude: </label><input id="lng_input" value="' + currLatLng.lng + '" type="text" /><button>Copy</button></p>' +
+    '<p><label for="loc_input">Location: </label><input id="loc_input" value="' + currLoc + '" type="text" /><button>Copy</button></p>' +
+    '<p>Click button to copy to clipboard. <span class="success">Copied longitude.</span></p>' +
+    '</div>';
+}
+
+function initMap() {
+  var map = new google.maps.Map(document.getElementById('map'), {
+    center: startLatLng,
+    zoom: 8,
+    mapTypeId: google.maps.MapTypeId.ROADMAP
+  });
+  var marker = new google.maps.Marker({
+    position: startLatLng,
+    map: map,
+    title: 'Set lat/lon values for this property',
+    draggable: true
+  });
+  var infowindow = new google.maps.InfoWindow({
+    content: getInfoContent()
+  });
+  
+  function rehydrate() {
+    var lat = localStorage.getItem(lsPrefix + 'lat');
+    var lng = localStorage.getItem(lsPrefix + 'lng');
+    var loc = localStorage.getItem(lsPrefix + 'loc');
+    var zoom = localStorage.getItem(lsPrefix + 'zoom');
+    
+    if (lat) {
+      currLatLng.lat = lat;
+      currLatLng.lng = lng;
+      currLoc = loc;
+      currZoom = zoom;
+    }
+    
+    marker.setPosition(new google.maps.LatLng(currLatLng.lat, currLatLng.lng));
+    console.log(zoom);
+    map.setZoom(Number(zoom));
+    map.setCenter(marker.getPosition());
+    updateInfowindow(null, true);
+  }
+  
+  function updateInfowindow(ev, onlyUpdate) {
+    if (ev) {
+      currLatLng.lat = ev.latLng.lat();
+      currLatLng.lng = ev.latLng.lng();
+    }
+    infowindow.setContent(getInfoContent());
+    infowindow.open(map, marker);
+    localStorage.setItem(lsPrefix + 'lat', currLatLng.lat);
+    localStorage.setItem(lsPrefix + 'lng', currLatLng.lng);
+    localStorage.setItem(lsPrefix + 'loc', currLoc);
+    localStorage.setItem(lsPrefix + 'zoom', currZoom);
+    
+    currLoc = '...';
+    
+    if (onlyUpdate) {
+      return;
+    }
+    
+    clearTimeout(delayTimer);
+    delayTimer = setTimeout(function() {
+      findLoc(currLatLng.lat, currLatLng.lng);
+    }, 500);
+  }
+  
+  function findLoc(lat, lng) {
+    $.getJSON('http://maps.googleapis.com/maps/api/geocode/json?latlng=' + lat + ',' + lng + '&sensor=false', function(data) {
+      if (!data || data.status == 'ZERO_RESULTS') {
+        currLoc = '...';
+      }
+      else {
+        currLoc = data.results[0].formatted_address;
+      }
+      updateInfowindow(null, true);
+    });
+  }
+  
+  var input = document.getElementById('pac-input');
+  var searchBox = new google.maps.places.SearchBox(input);
+  map.controls[google.maps.ControlPosition.TOP_LEFT].push(input);
+  map.addListener('bounds_changed', function() {
+    searchBox.setBounds(map.getBounds());
+  });
+  searchBox.addListener('places_changed', function() {
+    var places = searchBox.getPlaces();
+    if (places.length == 0) {
+      return;
+    }
+    currLatLng.lat = places[0].geometry.location.lat();
+    currLatLng.lng = places[0].geometry.location.lng();
+    marker.setPosition(new google.maps.LatLng(currLatLng.lat, currLatLng.lng));
+    map.setCenter(marker.getPosition());
+    updateInfowindow();
+  });
+  
+  google.maps.event.addListener(marker, 'click', updateInfowindow);
+  google.maps.event.addListener(marker, 'dragend', updateInfowindow);
+  google.maps.event.addListener(marker, 'drag', updateInfowindow);
+  google.maps.event.addListener(map, 'click', function(ev) {
+    marker.setPosition(ev.latLng);
+    updateInfowindow(ev);
+  });
+  map.addListener('zoom_changed', function() {
+    currZoom = map.getZoom();
+    localStorage.setItem(lsPrefix + 'zoom', currZoom);
+  });
+  
+  rehydrate();
+}
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBMxvxhR8vB6AlrmHy84IIbXYtWTQNSgL4&libraries=places&callback=initMap"
+async defer></script>
+</body>
+</html>
